@@ -61,15 +61,33 @@ function seedShellularConfig() {
   }
 }
 
-function getHashedMachineId() {
+let generatedRawMachineId = null;
+
+function getRawMachineId() {
+  if (process.env.MACHINE_ID_RAW) return process.env.MACHINE_ID_RAW;
+
   try {
-    const raw = process.env.MACHINE_ID_RAW ||
-                fs.readFileSync('/etc/machine-id', 'utf-8').trim();
-    if (!raw) return null;
-    return crypto.createHash('sha256').update(raw).digest('hex');
+    return fs.readFileSync('/etc/machine-id', 'utf-8').trim();
   } catch {
-    return null;
+    // No MACHINE_ID_RAW env var and no /etc/machine-id on this host (common on
+    // some container platforms). Generate one so registration can still work,
+    // and print it so it can be copied into a permanent MACHINE_ID_RAW secret —
+    // otherwise a new random one is generated on every restart and you'll hit
+    // "machine-id mismatch" / need to re-register each time.
+    if (!generatedRawMachineId) {
+      generatedRawMachineId = crypto.randomBytes(32).toString('hex');
+      console.log('[shellular] No MACHINE_ID_RAW set and /etc/machine-id not found.');
+      console.log('[shellular] Generated one for this session — set it as a permanent env var:');
+      console.log(`[shellular]   MACHINE_ID_RAW=${generatedRawMachineId}`);
+    }
+    return generatedRawMachineId;
   }
+}
+
+function getHashedMachineId() {
+  const raw = getRawMachineId();
+  if (!raw) return null;
+  return crypto.createHash('sha256').update(raw).digest('hex');
 }
 
 seedShellularConfig();
@@ -80,13 +98,8 @@ app.get('/api/shellular/machine-id', (_req, res) => {
 });
 
 app.get('/api/shellular/raw-machine-id', (_req, res) => {
-  try {
-    const raw = process.env.MACHINE_ID_RAW ||
-                fs.readFileSync('/etc/machine-id', 'utf-8').trim();
-    raw ? res.json({ raw }) : res.status(500).json({ error: 'Not available' });
-  } catch {
-    res.status(500).json({ error: 'Not available' });
-  }
+  const raw = getRawMachineId();
+  raw ? res.json({ raw }) : res.status(500).json({ error: 'Not available' });
 });
 
 app.post('/api/shellular/seed-host', requireAuth, (req, res) => {
