@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "shellular": "^0.0.56"
+    "shellular": "^0.0.17"
   },
   "engines": {
     "node": ">=20"
